@@ -169,6 +169,21 @@ class HybridRecommender:
         )
         merged["CB_SCORE"] = merged["CB_SCORE"].fillna(0.0)
         merged["CF_SCORE"] = merged["CF_SCORE"].fillna(0.0)
+
+        # CF-only rows (TITLE is NaN): fill metadata from lessons corpus or drop ghost lessons
+        cf_only_mask = merged["TITLE"].isna()
+        if cf_only_mask.any():
+            lessons_df = getattr(self.cb_model, "_lessons_df", None)
+            if lessons_df is not None:
+                meta_cols = [c for c in ["TITLE", "THEOLOGICAL_DOMAIN", "DIFFICULTY_LEVEL",
+                                         "SPIRITUAL_DEPTH", "READING_TIME_MIN"]
+                             if c in lessons_df.columns]
+                cf_only = (merged.loc[cf_only_mask, ["LESSON_ID", "CB_SCORE", "CF_SCORE"]]
+                           .merge(lessons_df[["LESSON_ID"] + meta_cols], on="LESSON_ID", how="inner"))
+                merged = pd.concat([merged[~cf_only_mask], cf_only], ignore_index=True)
+            else:
+                merged = merged.dropna(subset=["TITLE"])
+
         merged["HYBRID_SCORE"] = (cb_weight * merged["CB_SCORE"] +
                                    cf_weight  * merged["CF_SCORE"])
         merged = (merged
